@@ -48,6 +48,7 @@
 #include "lwip/netif.h"
 #include "lwip/stats.h"
 #include "lwip/icmp.h"
+#include "lwip/timeouts.h"
 
 #include <string.h>
 
@@ -117,6 +118,18 @@ static u16_t ip_reass_pbufcount;
 /* function prototypes */
 static void ip_reass_dequeue_datagram(struct ip_reassdata *ipr, struct ip_reassdata *prev);
 static int ip_reass_free_complete_datagram(struct ip_reassdata *ipr, struct ip_reassdata *prev);
+
+#if LWIP_TIMERS && LWIP_IP4_REASSEMBLY_TIMERS_ONDEMAND
+static void
+ip_reass_timeout(void *arg)
+{
+  LWIP_UNUSED_ARG(arg);
+  ip_reass_tmr();
+  if (reassdatagrams != NULL) {
+    sys_timeout(IP_TMR_INTERVAL, ip_reass_timeout, NULL);
+  }
+}
+#endif
 
 /**
  * Reassembly timer base function
@@ -301,6 +314,13 @@ ip_reass_enqueue_new_datagram(struct ip_hdr *fraghdr, int clen)
   ipr->timer = IP_REASS_MAXAGE;
 
   /* enqueue the new structure to the front of the list */
+#if LWIP_TIMERS && LWIP_IP4_REASSEMBLY_TIMERS_ONDEMAND
+  /* Only the empty-to-nonempty transition starts a timer; later fragments
+     must not postpone expiration of datagrams already being reassembled. */
+  if (reassdatagrams == NULL) {
+    sys_timeout(IP_TMR_INTERVAL, ip_reass_timeout, NULL);
+  }
+#endif
   ipr->next = reassdatagrams;
   reassdatagrams = ipr;
   /* copy the ip header for later tests and input */
@@ -328,6 +348,11 @@ ip_reass_dequeue_datagram(struct ip_reassdata *ipr, struct ip_reassdata *prev)
 
   /* now we can free the ip_reassdata struct */
   memp_free(MEMP_REASSDATA, ipr);
+#if LWIP_TIMERS && LWIP_IP4_REASSEMBLY_TIMERS_ONDEMAND
+  if (reassdatagrams == NULL) {
+    sys_untimeout(ip_reass_timeout, NULL);
+  }
+#endif
 }
 
 /**

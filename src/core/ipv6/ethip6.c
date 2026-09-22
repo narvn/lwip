@@ -79,8 +79,10 @@ err_t
 ethip6_output(struct netif *netif, struct pbuf *q, const ip6_addr_t *ip6addr)
 {
   struct eth_addr dest;
+#if LWIP_ND6
   const u8_t *hwaddr;
   err_t result;
+#endif
 
   LWIP_ASSERT_CORE_LOCKED();
 
@@ -105,6 +107,7 @@ ethip6_output(struct netif *netif, struct pbuf *q, const ip6_addr_t *ip6addr)
   /* @todo anycast? */
 
   /* Ask ND6 what to do with the packet. */
+#if LWIP_ND6
   result = nd6_get_next_hop_addr_or_queue(netif, q, ip6addr, &hwaddr);
   if (result != ERR_OK) {
     return result;
@@ -118,6 +121,10 @@ ethip6_output(struct netif *netif, struct pbuf *q, const ip6_addr_t *ip6addr)
   /* Send out the packet using the returned hardware address. */
   SMEMCPY(dest.addr, hwaddr, 6);
   return ethernet_output(netif, q, (const struct eth_addr*)(netif->hwaddr), &dest, ETHTYPE_IPV6);
+#else
+  /* Unicast Ethernet output requires neighbor address resolution. */
+  return ERR_RTE;
+#endif /* LWIP_ND6 */
 }
 
 #endif /* LWIP_IPV6 && LWIP_ETHERNET */

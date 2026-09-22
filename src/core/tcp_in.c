@@ -1318,7 +1318,7 @@ tcp_receive(struct tcp_pcb *pcb)
       }
 #endif /* TCP_OVERSIZE */
 
-#if LWIP_IPV6 && LWIP_ND6_TCP_REACHABILITY_HINTS
+#if LWIP_IPV6 && LWIP_ND6 && LWIP_ND6_TCP_REACHABILITY_HINTS
       if (ip_current_is_v6()) {
         /* Inform neighbor reachability of forward progress. */
         nd6_reachability_hint(ip6_current_src_addr());
@@ -1646,7 +1646,7 @@ tcp_receive(struct tcp_pcb *pcb)
         }
 #endif /* LWIP_TCP_SACK_OUT */
 
-#if LWIP_IPV6 && LWIP_ND6_TCP_REACHABILITY_HINTS
+#if LWIP_IPV6 && LWIP_ND6 && LWIP_ND6_TCP_REACHABILITY_HINTS
         if (ip_current_is_v6()) {
           /* Inform neighbor reachability of forward progress. */
           nd6_reachability_hint(ip6_current_src_addr());

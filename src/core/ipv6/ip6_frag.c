@@ -44,6 +44,7 @@
 #include "lwip/ip6.h"
 #include "lwip/icmp6.h"
 #include "lwip/nd6.h"
+#include "lwip/timeouts.h"
 #include "lwip/ip.h"
 
 #include "lwip/pbuf.h"
@@ -108,6 +109,18 @@ static void ip6_reass_free_complete_datagram(struct ip6_reassdata *ipr);
 #if IP_REASS_FREE_OLDEST
 static void ip6_reass_remove_oldest_datagram(struct ip6_reassdata *ipr, int pbufs_needed);
 #endif /* IP_REASS_FREE_OLDEST */
+
+#if LWIP_TIMERS && LWIP_IP6_REASSEMBLY_TIMERS_ONDEMAND
+static void
+ip6_reass_timeout(void *arg)
+{
+  LWIP_UNUSED_ARG(arg);
+  ip6_reass_tmr();
+  if (reassdatagrams != NULL) {
+    sys_timeout(IP6_REASS_TMR_INTERVAL, ip6_reass_timeout, NULL);
+  }
+}
+#endif
 
 void
 ip6_reass_tmr(void)
@@ -217,6 +230,11 @@ ip6_reass_free_complete_datagram(struct ip6_reassdata *ipr)
     }
   }
   memp_free(MEMP_IP6_REASSDATA, ipr);
+#if LWIP_TIMERS && LWIP_IP6_REASSEMBLY_TIMERS_ONDEMAND
+  if (reassdatagrams == NULL) {
+    sys_untimeout(ip6_reass_timeout, NULL);
+  }
+#endif
 
   /* Finally, update number of pbufs in reassembly queue */
   LWIP_ASSERT("ip_reass_pbufcount >= clen", ip6_reass_pbufcount >= pbufs_freed);
@@ -271,7 +289,7 @@ ip6_reass_remove_oldest_datagram(struct ip6_reassdata *ipr, int pbufs_needed)
 struct pbuf *
 ip6_reass(struct pbuf *p)
 {
-  struct ip6_reassdata *ipr, *ipr_prev;
+  struct ip6_reassdata *ipr = NULL, *ipr_prev;
   struct ip6_reass_helper *iprh, *iprh_tmp, *iprh_prev=NULL;
   struct ip6_frag_hdr *frag_hdr;
   u16_t offset, len, start, end;
@@ -355,6 +373,12 @@ ip6_reass(struct pbuf *p)
     ipr->timer = IPV6_REASS_MAXAGE;
 
     /* enqueue the new structure to the front of the list */
+#if LWIP_TIMERS && LWIP_IP6_REASSEMBLY_TIMERS_ONDEMAND
+    /* Preserve the timer phase while any other datagram is pending. */
+    if (reassdatagrams == NULL) {
+      sys_timeout(IP6_REASS_TMR_INTERVAL, ip6_reass_timeout, NULL);
+    }
+#endif
     ipr->next = reassdatagrams;
     reassdatagrams = ipr;
 
@@ -657,6 +681,11 @@ ip6_reass(struct pbuf *p)
       ipr_prev->next = ipr->next;
     }
     memp_free(MEMP_IP6_REASSDATA, ipr);
+#if LWIP_TIMERS && LWIP_IP6_REASSEMBLY_TIMERS_ONDEMAND
+    if (reassdatagrams == NULL) {
+      sys_untimeout(ip6_reass_timeout, NULL);
+    }
+#endif
 
     /* adjust the number of pbufs currently queued for reassembly. */
     clen = pbuf_clen(p);
@@ -678,6 +707,18 @@ ip6_reass(struct pbuf *p)
   return NULL;
 
 nullreturn:
+  /* A rejected first fragment must not leave an empty queue entry whose
+     timeout would dereference ipr->p. Such a new entry is always the head. */
+  if ((ipr != NULL) && (ipr->p == NULL)) {
+    LWIP_ASSERT("empty reassembly entry must be the head", ipr == reassdatagrams);
+    reassdatagrams = ipr->next;
+    memp_free(MEMP_IP6_REASSDATA, ipr);
+#if LWIP_TIMERS && LWIP_IP6_REASSEMBLY_TIMERS_ONDEMAND
+    if (reassdatagrams == NULL) {
+      sys_untimeout(ip6_reass_timeout, NULL);
+    }
+#endif
+  }
   IP6_FRAG_STATS_INC(ip6_frag.drop);
   pbuf_free(p);
   return NULL;
@@ -744,7 +785,12 @@ ip6_frag(struct pbuf *p, struct netif *netif, const ip6_addr_t *dest)
 #endif
   static u32_t identification;
   u16_t left, cop;
+#if LWIP_ND6
   const u16_t mtu = nd6_get_destination_mtu(dest, netif);
+#else
+  /* IP-only links supply their MTU directly, without a neighbor cache. */
+  const u16_t mtu = netif_mtu6(netif);
+#endif
   const u16_t nfb = (u16_t)((mtu - (IP6_HLEN + IP6_FRAG_HLEN)) & IP6_FRAG_OFFSET_MASK);
   u16_t fragment_offset = 0;
   u16_t last;

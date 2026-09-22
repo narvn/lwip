@@ -43,7 +43,7 @@
 
 #include "lwip/opt.h"
 
-#if LWIP_IPV6  /* don't build if not configured for use in lwipopts.h */
+#if LWIP_IPV6 && LWIP_ND6 /* don't build if not configured for use in lwipopts.h */
 
 #include "lwip/nd6.h"
 #include "lwip/priv/nd6_priv.h"

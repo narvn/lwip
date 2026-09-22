@@ -208,10 +208,12 @@ ip6_route(const ip6_addr_t *src, const ip6_addr_t *dest)
   }
 
   /* Get the netif for a suitable router-announced route. */
+#if LWIP_ND6
   netif = nd6_find_route(dest);
   if (netif != NULL) {
     return netif;
   }
+#endif /* LWIP_ND6 */
 
   /* Try with the netif that matches the source address. Given the earlier rule
    * for scoped source addresses, this applies to unscoped addresses only. */
@@ -1281,7 +1283,12 @@ ip6_output_if_src(struct pbuf *p, const ip6_addr_t *src, const ip6_addr_t *dest,
 #endif /* ENABLE_LOOPBACK */
 #if LWIP_IPV6_FRAG
   /* don't fragment if interface has mtu set to 0 [loopif] */
+#if LWIP_ND6
   if (netif_mtu6(netif) && (p->tot_len > nd6_get_destination_mtu(dest, netif))) {
+#else
+  /* IP-only links use the MTU configured by their owner. */
+  if (netif_mtu6(netif) && (p->tot_len > netif_mtu6(netif))) {
+#endif /* LWIP_ND6 */
     return ip6_frag(p, netif, dest);
   }
 #endif /* LWIP_IPV6_FRAG */

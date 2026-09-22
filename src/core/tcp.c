@@ -2278,7 +2278,11 @@ tcp_eff_send_mss_netif(u16_t sendmss, struct netif *outif, const ip_addr_t *dest
 #endif /* LWIP_IPV4 */
   {
     /* First look in destination cache, to see if there is a Path MTU. */
+#if LWIP_ND6
     mtu = nd6_get_destination_mtu(ip_2_ip6(dest), outif);
+#else
+    mtu = outif != NULL ? netif_mtu6(outif) : IP6_MIN_MTU_LENGTH;
+#endif /* LWIP_ND6 */
   }
 #if LWIP_IPV4
   else

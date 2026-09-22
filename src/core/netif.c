@@ -345,7 +345,9 @@ netif_add(struct netif *netif,
   /* IPv6 address autoconfiguration should be enabled by default */
   netif->ip6_autoconfig_enabled = 1;
 #endif /* LWIP_IPV6_AUTOCONFIG */
+#if LWIP_ND6
   nd6_restart_netif(netif);
+#endif /* LWIP_ND6 */
 #endif /* LWIP_IPV6 */
 #if LWIP_NETIF_STATUS_CALLBACK
   netif->status_callback = NULL;
@@ -890,9 +892,9 @@ netif_set_up(struct netif *netif)
 #endif
 
     netif_issue_reports(netif, NETIF_REPORT_TYPE_IPV4 | NETIF_REPORT_TYPE_IPV6);
-#if LWIP_IPV6
+#if LWIP_IPV6 && LWIP_ND6
     nd6_restart_netif(netif);
-#endif /* LWIP_IPV6 */
+#endif /* LWIP_IPV6 && LWIP_ND6 */
   }
 }
 
@@ -970,9 +972,9 @@ netif_set_down(struct netif *netif)
     }
 #endif /* LWIP_IPV4 && LWIP_ARP */
 
-#if LWIP_IPV6
+#if LWIP_IPV6 && LWIP_ND6
     nd6_cleanup_netif(netif);
-#endif /* LWIP_IPV6 */
+#endif /* LWIP_IPV6 && LWIP_ND6 */
 
     NETIF_STATUS_CALLBACK(netif);
   }
@@ -1033,9 +1035,9 @@ netif_set_link_up(struct netif *netif)
 #endif /* LWIP_AUTOIP */
 
     netif_issue_reports(netif, NETIF_REPORT_TYPE_IPV4 | NETIF_REPORT_TYPE_IPV6);
-#if LWIP_IPV6
+#if LWIP_IPV6 && LWIP_ND6
     nd6_restart_netif(netif);
-#endif /* LWIP_IPV6 */
+#endif /* LWIP_IPV6 && LWIP_ND6 */
 
     NETIF_LINK_CALLBACK(netif);
 #if LWIP_NETIF_EXT_STATUS_CALLBACK
@@ -1458,12 +1460,12 @@ netif_ip6_addr_set_state(struct netif *netif, s8_t addr_idx, u8_t state)
     u8_t new_valid = state & IP6_ADDR_VALID;
     LWIP_DEBUGF(NETIF_DEBUG | LWIP_DBG_STATE, ("netif_ip6_addr_set_state: netif address state being changed\n"));
 
-#if LWIP_IPV6_MLD
+#if LWIP_IPV6_MLD && LWIP_ND6
     /* Reevaluate solicited-node multicast group membership. */
     if (netif->flags & NETIF_FLAG_MLD6) {
       nd6_adjust_mld_membership(netif, addr_idx, state);
     }
-#endif /* LWIP_IPV6_MLD */
+#endif /* LWIP_IPV6_MLD && LWIP_ND6 */
 
     if (old_valid && !new_valid) {
       /* address about to be removed by setting invalid */

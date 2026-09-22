@@ -516,7 +516,7 @@
  * The number of sys timeouts used by the core stack (not apps)
  * The default number of timeouts is calculated here for all enabled modules.
  */
-#define LWIP_NUM_SYS_TIMEOUT_INTERNAL   (LWIP_TCP + IP_REASSEMBLY + LWIP_ARP + (2*LWIP_DHCP) + LWIP_ACD + LWIP_IGMP + LWIP_DNS + PPP_NUM_TIMEOUTS + (LWIP_IPV6 * (1 + LWIP_IPV6_REASS + LWIP_IPV6_MLD + LWIP_IPV6_DHCP6)))
+#define LWIP_NUM_SYS_TIMEOUT_INTERNAL   (LWIP_TCP + IP_REASSEMBLY + LWIP_ARP + (2*LWIP_DHCP) + LWIP_ACD + LWIP_IGMP + LWIP_DNS + PPP_NUM_TIMEOUTS + (LWIP_IPV6 * (LWIP_ND6 + LWIP_IPV6_REASS + LWIP_IPV6_MLD + LWIP_IPV6_DHCP6)))
 
 /**
  * MEMP_NUM_SYS_TIMEOUT: the number of simultaneously active timeouts.
@@ -768,6 +768,11 @@
  */
 #if !defined IP_REASSEMBLY || defined __DOXYGEN__
 #define IP_REASSEMBLY                   1
+#endif
+
+/** Schedule IPv4 reassembly timeouts only while the reassembly queue is nonempty. */
+#if !defined LWIP_IP4_REASSEMBLY_TIMERS_ONDEMAND || defined __DOXYGEN__
+#define LWIP_IP4_REASSEMBLY_TIMERS_ONDEMAND 0
 #endif
 
 /**
@@ -2471,6 +2476,20 @@
 #endif
 
 /**
+ * LWIP_ND6==0: disable neighbor/router discovery, address autoconfiguration
+ * maintenance and ICMPv6 Path MTU updates. Intended for IP-only links whose
+ * addresses, routes and MTU are managed externally. Output uses the netif MTU.
+ */
+#if !defined LWIP_ND6 || defined __DOXYGEN__
+#define LWIP_ND6                       1
+#endif
+
+/** Schedule IPv6 reassembly timeouts only while the reassembly queue is nonempty. */
+#if !defined LWIP_IP6_REASSEMBLY_TIMERS_ONDEMAND || defined __DOXYGEN__
+#define LWIP_IP6_REASSEMBLY_TIMERS_ONDEMAND 0
+#endif
+
+/**
  * IPV6_REASS_MAXAGE: Maximum time (in multiples of IP6_REASS_TMR_INTERVAL - so seconds, normally)
  * a fragmented IP packet waits for all fragments to arrive. If not all fragments arrived
  * in this time, the whole packet is discarded.
@@ -2543,14 +2562,14 @@
  * network startup.
  */
 #if !defined LWIP_IPV6_SEND_ROUTER_SOLICIT || defined __DOXYGEN__
-#define LWIP_IPV6_SEND_ROUTER_SOLICIT   LWIP_IPV6
+#define LWIP_IPV6_SEND_ROUTER_SOLICIT   (LWIP_IPV6 && LWIP_ND6)
 #endif
 
 /**
  * LWIP_IPV6_AUTOCONFIG==1: Enable stateless address autoconfiguration as per RFC 4862.
  */
 #if !defined LWIP_IPV6_AUTOCONFIG || defined __DOXYGEN__
-#define LWIP_IPV6_AUTOCONFIG            LWIP_IPV6
+#define LWIP_IPV6_AUTOCONFIG            (LWIP_IPV6 && LWIP_ND6)
 #endif
 
 /**
@@ -2568,7 +2587,7 @@
  * LWIP_IPV6_DUP_DETECT_ATTEMPTS=[0..7]: Number of duplicate address detection attempts.
  */
 #if !defined LWIP_IPV6_DUP_DETECT_ATTEMPTS || defined __DOXYGEN__
-#define LWIP_IPV6_DUP_DETECT_ATTEMPTS   1
+#define LWIP_IPV6_DUP_DETECT_ATTEMPTS   LWIP_ND6
 #endif
 /**
  * @}
@@ -2643,7 +2662,7 @@
  * is being resolved.
  */
 #if !defined LWIP_ND6_QUEUEING || defined __DOXYGEN__
-#define LWIP_ND6_QUEUEING               LWIP_IPV6
+#define LWIP_ND6_QUEUEING               (LWIP_IPV6 && LWIP_ND6)
 #endif
 
 /**
@@ -2739,7 +2758,7 @@
  * Reachable time and retransmission timers, and netif MTU.
  */
 #if !defined LWIP_ND6_ALLOW_RA_UPDATES || defined __DOXYGEN__
-#define LWIP_ND6_ALLOW_RA_UPDATES       1
+#define LWIP_ND6_ALLOW_RA_UPDATES       LWIP_ND6
 #endif
 
 /**
@@ -2748,7 +2767,7 @@
  * unicast neighbor solicitation messages.
  */
 #if !defined LWIP_ND6_TCP_REACHABILITY_HINTS || defined __DOXYGEN__
-#define LWIP_ND6_TCP_REACHABILITY_HINTS 1
+#define LWIP_ND6_TCP_REACHABILITY_HINTS LWIP_ND6
 #endif
 
 /**
