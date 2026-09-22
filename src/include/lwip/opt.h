@@ -516,7 +516,7 @@
  * The number of sys timeouts used by the core stack (not apps)
  * The default number of timeouts is calculated here for all enabled modules.
  */
-#define LWIP_NUM_SYS_TIMEOUT_INTERNAL   (LWIP_TCP + IP_REASSEMBLY + LWIP_ARP + (2*LWIP_DHCP) + LWIP_ACD + LWIP_IGMP + LWIP_DNS + PPP_NUM_TIMEOUTS + (LWIP_IPV6 * (LWIP_ND6 + LWIP_IPV6_REASS + LWIP_IPV6_MLD + LWIP_IPV6_DHCP6)))
+#define LWIP_NUM_SYS_TIMEOUT_INTERNAL   (LWIP_TCP + IP_REASSEMBLY + LWIP_ARP + (2*LWIP_DHCP) + LWIP_ACD + LWIP_IGMP + LWIP_DNS + PPP_NUM_TIMEOUTS + (LWIP_IPV6 * (LWIP_ND6 + LWIP_IPV6_PMTU + LWIP_IPV6_REASS + LWIP_IPV6_MLD + LWIP_IPV6_DHCP6)))
 
 /**
  * MEMP_NUM_SYS_TIMEOUT: the number of simultaneously active timeouts.
@@ -2477,11 +2477,30 @@
 
 /**
  * LWIP_ND6==0: disable neighbor/router discovery, address autoconfiguration
- * maintenance and ICMPv6 Path MTU updates. Intended for IP-only links whose
- * addresses, routes and MTU are managed externally. Output uses the netif MTU.
+ * maintenance. Intended for IP-only links whose addresses and routes are
+ * managed externally. ICMPv6 Path MTU discovery is controlled separately.
  */
 #if !defined LWIP_ND6 || defined __DOXYGEN__
 #define LWIP_ND6                       1
+#endif
+
+/**
+ * LWIP_IPV6_PMTU==1: learn Path MTUs from ICMPv6 Packet Too Big independently
+ * of ND6. Uses one on-demand timeout for the earliest learned-cache expiry.
+ * With LWIP_TIMERS==0, stale entries are ignored lazily on cache access.
+ */
+#if !defined LWIP_IPV6_PMTU || defined __DOXYGEN__
+#define LWIP_IPV6_PMTU                 LWIP_ICMP6
+#endif
+
+/** Maximum number of tracked IPv6 output paths, including learned PMTUs. */
+#if !defined LWIP_IPV6_PMTU_ENTRIES || defined __DOXYGEN__
+#define LWIP_IPV6_PMTU_ENTRIES         32
+#endif
+
+/** PMTU lifetime in milliseconds. RFC 8201 recommends 10 minutes (minimum 5). */
+#if !defined LWIP_IPV6_PMTU_TIMEOUT || defined __DOXYGEN__
+#define LWIP_IPV6_PMTU_TIMEOUT         600000UL
 #endif
 
 /** Schedule IPv6 reassembly timeouts only while the reassembly queue is nonempty. */

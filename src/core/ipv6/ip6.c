@@ -50,6 +50,7 @@
 #include "lwip/ip6.h"
 #include "lwip/ip6_addr.h"
 #include "lwip/ip6_frag.h"
+#include "lwip/ip6_pmtu.h"
 #include "lwip/icmp6.h"
 #include "lwip/priv/raw_priv.h"
 #include "lwip/udp.h"
@@ -63,6 +64,21 @@
 #ifdef LWIP_HOOK_FILENAME
 #include LWIP_HOOK_FILENAME
 #endif
+
+/** Return the interface MTU limited by any learned IPv6 Path MTU. */
+u16_t
+ip6_get_destination_mtu(const ip6_addr_t *dest, struct netif *netif)
+{
+  u16_t mtu = netif != NULL ? netif_mtu6(netif) : IP6_MIN_MTU_LENGTH;
+#if LWIP_ND6
+  mtu = LWIP_MIN(mtu, nd6_get_destination_mtu(dest, netif));
+#elif LWIP_IPV6_PMTU
+  mtu = ip6_pmtu_get_mtu(dest, netif, mtu);
+#else
+  LWIP_UNUSED_ARG(dest);
+#endif
+  return mtu;
+}
 
 /**
  * Finds the appropriate network interface for a given IPv6 address. It tries to select
@@ -1281,17 +1297,19 @@ ip6_output_if_src(struct pbuf *p, const ip6_addr_t *src, const ip6_addr_t *dest,
   }
 #endif /* LWIP_MULTICAST_TX_OPTIONS */
 #endif /* ENABLE_LOOPBACK */
+#if LWIP_IPV6_PMTU
+  ip6_pmtu_track_packet(p, netif);
+#endif
+#if LWIP_IPV6_FRAG || LWIP_IPV6_PMTU
+  /* A zero interface MTU (loopback) does not impose a packet size limit. */
+  if (netif_mtu6(netif) && (p->tot_len > ip6_get_destination_mtu(dest, netif))) {
 #if LWIP_IPV6_FRAG
-  /* don't fragment if interface has mtu set to 0 [loopif] */
-#if LWIP_ND6
-  if (netif_mtu6(netif) && (p->tot_len > nd6_get_destination_mtu(dest, netif))) {
-#else
-  /* IP-only links use the MTU configured by their owner. */
-  if (netif_mtu6(netif) && (p->tot_len > netif_mtu6(netif))) {
-#endif /* LWIP_ND6 */
     return ip6_frag(p, netif, dest);
-  }
+#else
+    return ERR_BUF;
 #endif /* LWIP_IPV6_FRAG */
+  }
+#endif /* LWIP_IPV6_FRAG || LWIP_IPV6_PMTU */
 
   LWIP_DEBUGF(IP6_DEBUG, ("netif->output_ip6()\n"));
   return netif->output_ip6(netif, p, dest);

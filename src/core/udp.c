@@ -452,7 +452,7 @@ again:
           ((pcb->flags & UDP_FLAGS_CONNECTED) == 0) &&
           (pcb->recv != NULL) &&
           IP_ADDR_PCB_VERSION_MATCH(pcb, ip_current_dest_addr())) {
-        struct udp_pcb *npcb = udp_new_ip_type(pcb->local_ip.type);
+        struct udp_pcb *npcb = udp_new_ip_type(IP_GET_TYPE(&pcb->local_ip));
         if (npcb != NULL) {
           ip_addr_set_ipaddr(&npcb->remote_ip, ip_current_src_addr());
           npcb->remote_port = src;

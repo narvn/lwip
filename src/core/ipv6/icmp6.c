@@ -46,6 +46,7 @@
 #include "lwip/icmp6.h"
 #include "lwip/prot/icmp6.h"
 #include "lwip/ip6.h"
+#include "lwip/ip6_pmtu.h"
 #include "lwip/ip6_addr.h"
 #include "lwip/inet_chksum.h"
 #include "lwip/pbuf.h"
@@ -113,11 +114,15 @@ icmp6_input(struct pbuf *p, struct netif *inp)
 #endif /* CHECKSUM_CHECK_ICMP6 */
 
   switch (icmp6hdr->type) {
+  case ICMP6_TYPE_PTB: /* Path MTU discovery does not require ND6. */
+#if LWIP_IPV6_PMTU
+    ip6_pmtu_input(p, inp);
+#endif
+    break;
   case ICMP6_TYPE_NA: /* Neighbor advertisement */
   case ICMP6_TYPE_NS: /* Neighbor solicitation */
   case ICMP6_TYPE_RA: /* Router advertisement */
   case ICMP6_TYPE_RD: /* Redirect */
-  case ICMP6_TYPE_PTB: /* Packet too big */
 #if LWIP_ND6
     nd6_input(p, inp);
 #else

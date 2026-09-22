@@ -91,6 +91,7 @@
 #endif /* LWIP_IPV6_MLD */
 #if LWIP_IPV6
 #include "lwip/nd6.h"
+#include "lwip/ip6_pmtu.h"
 #endif
 
 #if LWIP_NETIF_STATUS_CALLBACK
@@ -777,6 +778,10 @@ netif_remove(struct netif *netif)
 
   netif_invoke_ext_callback(netif, LWIP_NSC_NETIF_REMOVED, NULL);
 
+#if LWIP_IPV6 && LWIP_IPV6_PMTU
+  ip6_pmtu_cleanup_netif(netif);
+#endif
+
 #if LWIP_IPV4
   if (!ip4_addr_isany_val(*netif_ip4_addr(netif))) {
     netif_do_ip_addr_changed(netif_ip_addr4(netif), NULL);
@@ -976,6 +981,10 @@ netif_set_down(struct netif *netif)
     nd6_cleanup_netif(netif);
 #endif /* LWIP_IPV6 && LWIP_ND6 */
 
+#if LWIP_IPV6 && LWIP_IPV6_PMTU
+    ip6_pmtu_cleanup_netif(netif);
+#endif
+
     NETIF_STATUS_CALLBACK(netif);
   }
 }
@@ -1063,6 +1072,10 @@ netif_set_link_down(struct netif *netif)
 
   if (netif->flags & NETIF_FLAG_LINK_UP) {
     netif_clear_flags(netif, NETIF_FLAG_LINK_UP);
+
+#if LWIP_IPV6 && LWIP_IPV6_PMTU
+    ip6_pmtu_cleanup_netif(netif);
+#endif
 
 #if LWIP_AUTOIP
     autoip_network_changed_link_down(netif);

@@ -2256,7 +2256,7 @@ tcp_next_iss(struct tcp_pcb *pcb)
 #endif /* LWIP_HOOK_TCP_ISN */
 }
 
-#if TCP_CALCULATE_EFF_SEND_MSS
+#if TCP_CALCULATE_EFF_SEND_MSS || (LWIP_IPV6 && LWIP_IPV6_PMTU)
 /**
  * Calculates the effective send mss that can be used for a specific IP address
  * by calculating the minimum of TCP_MSS and the mtu (if set) of the target
@@ -2277,12 +2277,7 @@ tcp_eff_send_mss_netif(u16_t sendmss, struct netif *outif, const ip_addr_t *dest
   if (IP_IS_V6(dest))
 #endif /* LWIP_IPV4 */
   {
-    /* First look in destination cache, to see if there is a Path MTU. */
-#if LWIP_ND6
-    mtu = nd6_get_destination_mtu(ip_2_ip6(dest), outif);
-#else
-    mtu = outif != NULL ? netif_mtu6(outif) : IP6_MIN_MTU_LENGTH;
-#endif /* LWIP_ND6 */
+    mtu = ip6_get_destination_mtu(ip_2_ip6(dest), outif);
   }
 #if LWIP_IPV4
   else

@@ -420,6 +420,13 @@ tcp_write(struct tcp_pcb *pcb, const void *arg, u16_t len, u8_t apiflags)
   mss_local = LWIP_MIN(pcb->mss, TCPWND_MIN16(pcb->snd_wnd_max / 2));
   mss_local = mss_local ? mss_local : pcb->mss;
 
+#if LWIP_IPV6 && LWIP_IPV6_PMTU
+  if (IP_IS_V6(&pcb->remote_ip)) {
+    mss_local = tcp_eff_send_mss_netif(mss_local,
+        tcp_route(pcb, &pcb->local_ip, &pcb->remote_ip), &pcb->remote_ip);
+  }
+#endif
+
   LWIP_ASSERT_CORE_LOCKED();
 
 #if LWIP_NETIF_TX_SINGLE_PBUF
@@ -486,8 +493,9 @@ tcp_write(struct tcp_pcb *pcb, const void *arg, u16_t len, u8_t apiflags)
 
     /* Usable space at the end of the last unsent segment */
     unsent_optlen = LWIP_TCP_OPT_LENGTH_SEGMENT(last_unsent->flags, pcb);
-    LWIP_ASSERT("mss_local is too small", mss_local >= last_unsent->len + unsent_optlen);
-    space = mss_local - (last_unsent->len + unsent_optlen);
+    /* An already queued segment can predate a decrease in Path MTU. */
+    space = mss_local > last_unsent->len + unsent_optlen ?
+        (u16_t)(mss_local - (last_unsent->len + unsent_optlen)) : 0;
 
     /*
      * Phase 1: Copy data directly into an oversized pbuf.
@@ -935,7 +943,8 @@ tcp_split_unsent_seg(struct tcp_pcb *pcb, u16_t split)
   successfully because we are modifying the original segment */
   pbuf_realloc(useg->p, useg->p->tot_len - remainder);
   useg->len -= remainder;
-  TCPH_SET_FLAG(useg->tcphdr, split_flags);
+  /* FIN and PSH moved to the remainder must also be cleared on the head. */
+  TCPH_FLAGS_SET(useg->tcphdr, split_flags);
 #if TCP_OVERSIZE_DBGCHECK
   /* By trimming, realloc may have actually shrunk the pbuf, so clear oversize_left */
   useg->oversize_left = 0;
@@ -1242,6 +1251,10 @@ tcp_output(struct tcp_pcb *pcb)
 {
   struct tcp_seg *seg, *useg;
   u32_t wnd, snd_nxt;
+  u16_t first_len;
+#if LWIP_IPV6 && LWIP_IPV6_PMTU
+  u16_t path_mss = 0;
+#endif
   err_t err;
   struct netif *netif;
 #if TCP_CWND_DEBUG
@@ -1305,8 +1318,19 @@ tcp_output(struct tcp_pcb *pcb)
     ip_addr_copy(pcb->local_ip, *local_ip);
   }
 
-  /* Handle the current segment not fitting within the window */
-  if (lwip_ntohl(seg->tcphdr->seqno) - pcb->lastack + seg->len > wnd) {
+  first_len = seg->len;
+#if LWIP_IPV6 && LWIP_IPV6_PMTU
+  if (IP_IS_V6(&pcb->remote_ip)) {
+    path_mss = tcp_eff_send_mss_netif(pcb->mss, netif, &pcb->remote_ip);
+    if (path_mss <= LWIP_TCP_OPT_LENGTH_SEGMENT(seg->flags, pcb)) {
+      return ERR_BUF;
+    }
+    first_len = LWIP_MIN(first_len, path_mss - LWIP_TCP_OPT_LENGTH_SEGMENT(seg->flags, pcb));
+  }
+#endif
+
+  /* A PMTU-split segment may fit even when the original segment would not. */
+  if (lwip_ntohl(seg->tcphdr->seqno) - pcb->lastack + first_len > wnd) {
     /* We need to start the persistent timer when the next unsent segment does not fit
      * within the remaining (could be 0) send window and RTO timer is not running (we
      * have no in-flight data). If window is still too small after persist timer fires,
@@ -1333,8 +1357,29 @@ tcp_output(struct tcp_pcb *pcb)
     for (; useg->next != NULL; useg = useg->next);
   }
   /* data available and window allows it to be sent? */
-  while (seg != NULL &&
-         lwip_ntohl(seg->tcphdr->seqno) - pcb->lastack + seg->len <= wnd) {
+  while (seg != NULL) {
+#if LWIP_IPV6 && LWIP_IPV6_PMTU
+    if (path_mss != 0) {
+      u16_t optlen = LWIP_TCP_OPT_LENGTH_SEGMENT(seg->flags, pcb);
+      if (path_mss <= optlen) {
+        return ERR_BUF;
+      }
+      if (seg->len > path_mss - optlen) {
+        /* Includes old unsent segments and retransmissions after a PTB.
+         * Keep pcb->mss (the peer limit) so expiry can restore larger sends.
+         */
+        err = tcp_split_unsent_seg(pcb, (u16_t)(path_mss - optlen));
+        if (err != ERR_OK) {
+          tcp_set_flags(pcb, TF_NAGLEMEMERR);
+          return err;
+        }
+        seg = pcb->unsent;
+      }
+    }
+#endif
+    if (lwip_ntohl(seg->tcphdr->seqno) - pcb->lastack + seg->len > wnd) {
+      break;
+    }
     LWIP_ASSERT("RST not expected here!",
                 (TCPH_FLAGS(seg->tcphdr) & TCP_RST) == 0);
     /* Stop sending if the nagle algorithm would prevent it

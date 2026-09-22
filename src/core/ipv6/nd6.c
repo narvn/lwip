@@ -46,6 +46,7 @@
 #if LWIP_IPV6 && LWIP_ND6 /* don't build if not configured for use in lwipopts.h */
 
 #include "lwip/nd6.h"
+#include "lwip/ip6_pmtu.h"
 #include "lwip/priv/nd6_priv.h"
 #include "lwip/prot/nd6.h"
 #include "lwip/prot/icmp6.h"
@@ -908,42 +909,10 @@ nd6_input(struct pbuf *p, struct netif *inp)
     break; /* ICMP6_TYPE_RD */
   }
   case ICMP6_TYPE_PTB: /* Packet too big */
-  {
-    struct icmp6_hdr *icmp6hdr; /* Packet too big message */
-    struct ip6_hdr *ip6hdr; /* IPv6 header of the packet which caused the error */
-    u32_t pmtu;
-    ip6_addr_t destination_address;
-
-    /* Check that ICMPv6 header + IPv6 header fit in payload */
-    if (p->len < (sizeof(struct icmp6_hdr) + IP6_HLEN)) {
-      /* drop short packets */
-      pbuf_free(p);
-      ND6_STATS_INC(nd6.lenerr);
-      ND6_STATS_INC(nd6.drop);
-      return;
-    }
-
-    icmp6hdr = (struct icmp6_hdr *)p->payload;
-    ip6hdr = (struct ip6_hdr *)((u8_t*)p->payload + sizeof(struct icmp6_hdr));
-
-    /* Create an aligned, zoned copy of the destination address. */
-    ip6_addr_copy_from_packed(destination_address, ip6hdr->dest);
-    ip6_addr_assign_zone(&destination_address, IP6_UNKNOWN, inp);
-
-    /* Look for entry in destination cache. */
-    dest_idx = nd6_find_destination_cache_entry(&destination_address);
-    if (dest_idx < 0) {
-      /* Destination not in cache, drop packet. */
-      pbuf_free(p);
-      return;
-    }
-
-    /* Change the Path MTU. */
-    pmtu = lwip_htonl(icmp6hdr->data);
-    destination_cache[dest_idx].pmtu = (u16_t)LWIP_MIN(pmtu, 0xFFFF);
-
+#if LWIP_IPV6_PMTU
+    ip6_pmtu_input(p, inp);
+#endif
     break; /* ICMP6_TYPE_PTB */
-  }
 
   default:
     ND6_STATS_INC(nd6.proterr);
@@ -2326,19 +2295,20 @@ u16_t
 nd6_get_destination_mtu(const ip6_addr_t *ip6addr, struct netif *netif)
 {
   s16_t i;
+  u16_t mtu = netif != NULL ? netif_mtu6(netif) : IP6_MIN_MTU_LENGTH;
 
   i = nd6_find_destination_cache_entry(ip6addr);
   if (i >= 0) {
     if (destination_cache[i].pmtu > 0) {
-      return destination_cache[i].pmtu;
+      mtu = LWIP_MIN(mtu, destination_cache[i].pmtu);
     }
   }
 
-  if (netif != NULL) {
-    return netif_mtu6(netif);
-  }
-
-  return IP6_MIN_MTU_LENGTH; /* Minimum MTU */
+#if LWIP_IPV6_PMTU
+  /* Preserve the public ND6 query API while PMTU state lives independently. */
+  mtu = ip6_pmtu_get_mtu(ip6addr, netif, mtu);
+#endif
+  return mtu;
 }
 
 
