@@ -153,6 +153,17 @@ icmp_input(struct pbuf *p, struct netif *inp)
         }
       }
 #endif
+      /* Echo has no defined nonzero code. Intercept only after validation. */
+      if (pbuf_get_at(p, 1) != 0) {
+        goto icmperr;
+      }
+      if (inp->icmp_echo != NULL &&
+          !ip4_addr_ismulticast(ip4_current_dest_addr()) &&
+          !ip4_addr_isbroadcast(ip4_current_dest_addr(), ip_current_netif()) &&
+          inp->icmp_echo(p, inp)) {
+        pbuf_free(p);
+        return;
+      }
 #if LWIP_ICMP_ECHO_CHECK_INPUT_PBUF_LEN
       if (pbuf_add_header(p, hlen + PBUF_LINK_HLEN + PBUF_LINK_ENCAPSULATION_HLEN)) {
         /* p is not big enough to contain link headers

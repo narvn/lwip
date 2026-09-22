@@ -192,6 +192,15 @@ typedef err_t (*netif_init_fn)(struct netif *netif);
  */
 typedef err_t (*netif_input_fn)(struct pbuf *p, struct netif *inp);
 
+#if LWIP_ICMP || LWIP_ICMP6
+/** Intercept a validated, reassembled unicast Echo Request. p starts at the
+ * ICMP header and is borrowed; use ip_current_* only during this callback.
+ * Return nonzero to suppress the built-in reply. lwIP always frees p.
+ * The callback must not modify/free p or recursively call IP input.
+ */
+typedef u8_t (*netif_icmp_echo_fn)(struct pbuf *p, struct netif *inp);
+#endif
+
 #if LWIP_IPV4
 /** Function prototype for netif->output functions. Called by lwIP when a packet
  * shall be sent. For ethernet netif, set this to 'etharp_output' and set
@@ -279,6 +288,10 @@ typedef u8_t netif_addr_idx_t;
  *  The following fields should be filled in by the initialization
  *  function for the device driver: hwaddr_len, hwaddr[], mtu, flags */
 struct netif {
+#if LWIP_ICMP || LWIP_ICMP6
+  /** Optional Echo Request handler, initialized to NULL before netif init. */
+  netif_icmp_echo_fn icmp_echo;
+#endif
 #if !LWIP_SINGLE_NETIF
   /** pointer to next in linked list */
   struct netif *next;

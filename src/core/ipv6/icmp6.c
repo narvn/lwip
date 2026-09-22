@@ -153,6 +153,17 @@ icmp6_input(struct pbuf *p, struct netif *inp)
     }
 #endif /* LWIP_MULTICAST_PING */
 
+    if (icmp6hdr->code != 0) {
+      pbuf_free(p);
+      ICMP6_STATS_INC(icmp6.drop);
+      return;
+    }
+    if (inp->icmp_echo != NULL && !ip6_addr_ismulticast(ip6_current_dest_addr()) &&
+        inp->icmp_echo(p, inp)) {
+      pbuf_free(p);
+      return;
+    }
+
     /* Allocate reply. */
     r = pbuf_alloc(PBUF_IP, p->tot_len, PBUF_RAM);
     if (r == NULL) {

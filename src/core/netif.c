@@ -338,6 +338,9 @@ netif_add(struct netif *netif,
   NETIF_SET_CHECKSUM_CTRL(netif, NETIF_CHECKSUM_ENABLE_ALL);
   netif->mtu = 0;
   netif->flags = 0;
+#if LWIP_ICMP || LWIP_ICMP6
+  netif->icmp_echo = NULL;
+#endif
 #ifdef netif_get_client_data
   memset(netif->client_data, 0, sizeof(netif->client_data));
 #endif /* LWIP_NUM_NETIF_CLIENT_DATA */
