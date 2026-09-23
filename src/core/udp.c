@@ -339,6 +339,12 @@ again:
    * or invoking the accept callback. A retry through 'again' is too late. */
   if (for_us || netif_is_flag_set(inp, NETIF_FLAG_PRETEND_UDP)) {
     LWIP_DEBUGF(UDP_DEBUG | LWIP_DBG_TRACE, ("udp_input: calculating checksum\n"));
+#if LWIP_IPV6
+    /* IPv6 UDP requires a checksum even when software checking is disabled. */
+    if (ip_current_is_v6() && udphdr->chksum == 0) {
+      goto chkerr;
+    }
+#endif /* LWIP_IPV6 */
 #if CHECKSUM_CHECK_UDP
     IF__NETIF_CHECKSUM_ENABLED(inp, NETIF_CHECKSUM_CHECK_UDP) {
 #if LWIP_UDPLITE
@@ -472,7 +478,7 @@ again:
 end:
   PERF_STOP("udp_input");
   return;
-#if CHECKSUM_CHECK_UDP
+#if CHECKSUM_CHECK_UDP || LWIP_IPV6
 chkerr:
   LWIP_DEBUGF(UDP_DEBUG | LWIP_DBG_LEVEL_SERIOUS,
               ("udp_input: UDP (or UDP Lite) datagram discarded due to failing checksum\n"));
@@ -481,7 +487,7 @@ chkerr:
   MIB2_STATS_INC(mib2.udpinerrors);
   pbuf_free(p);
   PERF_STOP("udp_input");
-#endif /* CHECKSUM_CHECK_UDP */
+#endif /* CHECKSUM_CHECK_UDP || LWIP_IPV6 */
 }
 
 /**
